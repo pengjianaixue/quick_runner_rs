@@ -1,0 +1,91 @@
+use clap::Parser;
+use crossbeam_channel::unbounded;
+use crossterm::event::{self, Event, KeyCode};
+use serde_json::Result;
+use std::path::Path;
+use std::thread::spawn;
+use std::{env, io};
+use windows::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, PeekMessageA, SetWindowsHookExA, UnhookWindowsHookEx, HC_ACTION,
+        KBDLLHOOKSTRUCT, MSG, PM_NOREMOVE, WH_KEYBOARD_LL,
+    };
+use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
+
+/// Simple program to greet a person
+#[derive(Parser, Debug)]
+#[command(version, about, long_about = None)]
+struct Args {
+    /// Name of the person to greet
+    #[arg(short, long, default_value_t = String::from(env::current_dir().unwrap().to_str().unwrap()) + "\\config.json")]
+    json_path: String,
+
+    /// Number of times to greet
+    #[arg(short, long, default_value_t = 1)]
+    count: u8,
+}
+
+unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPARAM) -> LRESULT {
+    if code == HC_ACTION as i32 {
+        let kb_struct = *(l_param.0 as *const KBDLLHOOKSTRUCT);
+        println!("Key pressed: {}", kb_struct.scanCode);
+    }
+    CallNextHookEx(None, code, w_param, l_param)
+}
+
+fn main() -> io::Result<()> {
+    let args = Args::parse();
+    for _ in 0..args.count {
+        println!("Args: {}", args.json_path);
+    }
+    let json_path = Path::new(args.json_path.as_str());
+    if !json_path.exists() {
+        println!("File {} not exists", args.json_path)
+    }
+
+    let (tx, rx) = unbounded();
+    // let tx_copy = tx.clone();
+    /* add the ctrl-c input handler */
+    ctrlc::set_handler(move || {
+        println!("received ctrl + C");
+        tx.send("exit").expect("send failed");
+    })
+    .expect("set handle error");
+
+    let get_message_thread = spawn(move || unsafe {
+        let hook = SetWindowsHookExA(
+            WH_KEYBOARD_LL,
+            Some(keyboard_proc),
+            HINSTANCE(std::ptr::null_mut()),
+            0,
+        );
+
+        if hook.as_ref().unwrap().is_invalid() {
+            eprintln!("Failed to set hook");
+        }
+        let mut msg = MSG::default();
+        loop {
+            let ipc_msg = rx.try_recv();
+            match ipc_msg {
+                Err(crossbeam_channel::TryRecvError::Empty) => {
+                    let _ = PeekMessageA(&mut msg, None, 0, 0, PM_NOREMOVE);
+                }
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    println!("ipc_msg: disconnect");
+                    break;
+                }
+                Ok(msg_ipc) => {
+                    let _ = PeekMessageA(&mut msg, None, 0, 0, PM_NOREMOVE);
+                    println!("msg: {}", msg_ipc);
+                    if msg_ipc == "exit" {
+                        println!("exit !");
+                        break;
+                    }
+                }
+            }
+        }
+        let _ = UnhookWindowsHookEx(hook.unwrap());
+    });
+    /* waiting for the hook process thread */
+    while !get_message_thread.is_finished() {}
+    Ok(())
+}
