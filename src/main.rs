@@ -2,15 +2,21 @@ use clap::Parser;
 use crossbeam_channel::unbounded;
 use crossterm::event::{self, Event, KeyCode};
 use serde_json::Result;
+use std::io::Write;
 use std::path::Path;
+use std::ptr::null_mut;
 use std::thread::spawn;
 use std::{env, io};
-use windows::Win32::UI::WindowsAndMessaging::{
-        CallNextHookEx, PeekMessageA, SetWindowsHookExA, UnhookWindowsHookEx, HC_ACTION,
-        KBDLLHOOKSTRUCT, MSG, PM_NOREMOVE, WH_KEYBOARD_LL,
-    };
-use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, WPARAM};
 
+use winapi::{
+    shared::minwindef::UINT,
+    um::{errhandlingapi::*, winuser::*},
+};
+use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, TRUE, WPARAM};
+use windows::Win32::UI::WindowsAndMessaging::{
+    CallNextHookEx, PeekMessageA, SetWindowsHookExA, UnhookWindowsHookEx, HC_ACTION,
+    KBDLLHOOKSTRUCT, MSG, PM_NOREMOVE, PM_REMOVE, WH_KEYBOARD_LL,
+};
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -31,6 +37,8 @@ unsafe extern "system" fn keyboard_proc(code: i32, w_param: WPARAM, l_param: LPA
     }
     CallNextHookEx(None, code, w_param, l_param)
 }
+/* hotkey magic number */
+const HOTKEY_ID: i32 = 0xC025DE_i32;
 
 fn main() -> io::Result<()> {
     let args = Args::parse();
@@ -52,38 +60,44 @@ fn main() -> io::Result<()> {
     .expect("set handle error");
 
     let get_message_thread = spawn(move || unsafe {
-        let hook = SetWindowsHookExA(
-            WH_KEYBOARD_LL,
-            Some(keyboard_proc),
-            HINSTANCE(std::ptr::null_mut()),
-            0,
-        );
-
-        if hook.as_ref().unwrap().is_invalid() {
-            eprintln!("Failed to set hook");
+        if RegisterHotKey(
+            null_mut(),
+            HOTKEY_ID,
+            (MOD_ALT | MOD_CONTROL | MOD_NOREPEAT) as UINT,
+            VK_NUMPAD0 as UINT,
+        ) == 0
+        {
+            eprintln!("register hot key error, exit {}", GetLastError());
+            return;
         }
         let mut msg = MSG::default();
         loop {
             let ipc_msg = rx.try_recv();
             match ipc_msg {
-                Err(crossbeam_channel::TryRecvError::Empty) => {
-                    let _ = PeekMessageA(&mut msg, None, 0, 0, PM_NOREMOVE);
-                }
+                // Err(crossbeam_channel::TryRecvError::Empty) => {
+                // }
                 Err(crossbeam_channel::TryRecvError::Disconnected) => {
                     println!("ipc_msg: disconnect");
                     break;
                 }
                 Ok(msg_ipc) => {
-                    let _ = PeekMessageA(&mut msg, None, 0, 0, PM_NOREMOVE);
                     println!("msg: {}", msg_ipc);
                     if msg_ipc == "exit" {
                         println!("exit !");
                         break;
                     }
                 }
+                _ => {}
+            }
+            if PeekMessageA(&mut msg, None, 0, 0, PM_REMOVE) == TRUE {
+                println!("rec msg");
+                if msg.message == WM_HOTKEY && msg.wParam == WPARAM(HOTKEY_ID as usize) {
+                    let key_pressed = msg.lParam.0 >> 16;
+                    println!("hot key:{:?} pressed !", key_pressed);
+                }
             }
         }
-        let _ = UnhookWindowsHookEx(hook.unwrap());
+        let _ = UnregisterHotKey(null_mut(), HOTKEY_ID);
     });
     /* waiting for the hook process thread */
     while !get_message_thread.is_finished() {}
