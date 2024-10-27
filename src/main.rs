@@ -2,7 +2,9 @@ use clap::error::ErrorKind;
 use clap::Parser;
 use crossbeam_channel::unbounded;
 use crossterm::event::{self, Event, KeyCode};
+use serde::Serialize;
 use serde_json::Result;
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Error, Stdout, Write};
 use std::os::windows::process::CommandExt;
 use std::path::Path;
@@ -15,7 +17,6 @@ use std::{env, io, result};
 use winapi::um::consoleapi::SetConsoleCtrlHandler;
 use winapi::um::winbase::{CREATE_NEW_CONSOLE, DETACHED_PROCESS};
 use winapi::um::wincon::CTRL_CLOSE_EVENT;
-
 use winapi::{
     shared::minwindef::{BOOL, DWORD, FALSE, TRUE, UINT},
     um::{errhandlingapi::*, winuser::*},
@@ -38,6 +39,7 @@ struct Args {
     count: u8,
 }
 
+#[derive(Serialize)]
 struct RunContext<'a> {
     quick_cmd_name: &'a str,
     program_name: &'a str,
@@ -50,13 +52,12 @@ struct RunContext<'a> {
 
 fn run_command(run_ctxt: &RunContext) -> io::Result<Child> {
     println!("[runner]-> start run <{}>\n", run_ctxt.quick_cmd_name);
-    let  cmd_runner = Command::new(run_ctxt.program_name);
-    // let  mut cmd_runner_ref := ;
+    let mut cmd_runner = Command::new(run_ctxt.program_name);
     if let Some(work_dir) = run_ctxt.work_dir {
-        cmd_runner = cmd_runner.current_dir(work_dir);
+        cmd_runner.current_dir(work_dir);
     }
     if let Some(create_falg) = run_ctxt.create_falg {
-        cmd_runner = cmd_runner.creation_flags(create_falg);
+        cmd_runner.creation_flags(create_falg);
     }
 
     match cmd_runner
@@ -65,12 +66,16 @@ fn run_command(run_ctxt: &RunContext) -> io::Result<Child> {
         .spawn()
     {
         Ok(ret) => {
-            println!("[runner]-> run cmd:<{}> success",run_ctxt.quick_cmd_name);
-            Ok(ret)},
+            println!("[runner]-> run cmd:<{}> success", run_ctxt.quick_cmd_name);
+            Ok(ret)
+        }
         Err(err) => {
-            println!("[runner]-> quick cmd:<{}> failed, error info:{}",run_ctxt.quick_cmd_name,err);
+            println!(
+                "[runner]-> quick cmd:<{}> failed, error info:{}",
+                run_ctxt.quick_cmd_name, err
+            );
             Err(err)
-        },
+        }
     }
 }
 
@@ -143,26 +148,18 @@ fn main() -> io::Result<()> {
                         break;
                     }
                     match key_code {
-                        VK_NUMPAD0 => {
-                            let run_ctxt = RunContext{quick_cmd_name: "GRAPE GDB",program_name:"python.exe",work_dir:Some("D:/Code/firmware/memblaze/gdb/grape/gdb_launcher"),create_falg:Some(DETACHED_PROCESS),run_type:0,shortcut_key:VK_NUMPAD0 as u32,args: vec!["D:/Code/firmware/memblaze/gdb/grape/gdb_launcher/gdb_launcher_gui_grape.py"]
-                        };
+                        VK_F1 => {
+                            let run_ctxt = RunContext{quick_cmd_name: "GRAPE GDB",program_name:"python.exe",work_dir:Some("D:/Code/firmware/memblaze/gdb/grape/gdb_launcher"),create_falg:Some(DETACHED_PROCESS),run_type:0,shortcut_key:VK_F1 as u32,args: vec!["D:/Code/firmware/memblaze/gdb/grape/gdb_launcher/gdb_launcher_gui_grape.py"]};
                             let _ = run_command(&run_ctxt);
                         }
-                        VK_NUMPAD1 => {
+                        VK_F2 => {
                             println!("start scp image to local \n");
-                            let run_ctxt = RunContext{quick_cmd_name: "scp image to local",program_name:"scp.exe",work_dir:None,create_falg:Some(DETACHED_PROCESS),run_type:0,shortcut_key:VK_NUMPAD0 as u32,args: vec!["D:/Code/firmware/memblaze/gdb/grape/gdb_launcher/gdb_launcher_gui_grape.py"]
-                        };
+                            let mut run_ctxt = RunContext{quick_cmd_name: "scp image to local",program_name:"scp.exe",work_dir:None,create_falg:Some(DETACHED_PROCESS),run_type:0,shortcut_key:VK_F2 as u32,args: vec!["pengjian@172.30.20.3:/home/pengjian/code/firmware/build/swap/images/*.axf","C:/Users/jian.peng/Desktop/Images/images"]
+                            };
                             let _ = run_command(&run_ctxt);
-                            let _ = Command::new("scp.exe").creation_flags(CREATE_NEW_CONSOLE).arg("pengjian@172.30.20.3:/home/pengjian/code/firmware/build/swap/images/*.axf").arg("C:/Users/jian.peng/Desktop/Images/images").spawn().unwrap();
-                            let _ = Command::new("scp.exe").creation_flags(CREATE_NEW_CONSOLE).arg("pengjian@172.30.20.3:/home/pengjian/code/firmware/build/swap/images/image_allbinary.bin").arg("C:/Users/jian.peng/Desktop/Images/images").spawn().unwrap();
+                            run_ctxt.args = vec!["pengjian@172.30.20.3:/home/pengjian/code/firmware/build/swap/images/image_allbinary.bin","C:/Users/jian.peng/Desktop/Images/images"];
+                            let _ = run_command(&run_ctxt);
                         }
-                        // VK_NUMPAD2 => {
-                        //     println!("switch to vs code \n");
-                        //     match Command::new(r"C:\Program Files\WindowsApps\Microsoft.WindowsCalculator_11.2409.0.0_x64__8wekyb3d8bbwe\CalculatorApp.exe").creation_flags(DETACHED_PROCESS).stdout(Stdio::piped()).spawn() {
-                        //         Ok(_) =>{println!("run CalculatorApp.exe success")},
-                        //         Err(_)=>{println!("run CalculatorApp.exe fail, please check")}
-                        //     }
-                        // }
                         _ => {}
                     }
                 }
@@ -171,12 +168,8 @@ fn main() -> io::Result<()> {
         }
     });
     let get_message_thread = spawn(move || unsafe {
-        let hotkey_ids = vec![VK_NUMPAD0, VK_NUMPAD1, VK_NUMPAD2];
-        let hotkey_ids_name = vec![
-            stringify!(VK_NUMPAD0),
-            stringify!(VK_NUMPAD1),
-            stringify!(VK_NUMPAD2),
-        ];
+        let hotkey_ids = vec![VK_F1, VK_F2, VK_NUMPAD2];
+        let hotkey_ids_name = vec![stringify!(VK_F1), stringify!(VK_F2), stringify!(VK_NUMPAD2)];
         for hotkey_idx in 0..hotkey_ids.len() {
             println!(
                 "hotkey register: {} => {}",
@@ -197,8 +190,6 @@ fn main() -> io::Result<()> {
         loop {
             let ipc_msg = terminal_rx.try_recv();
             match ipc_msg {
-                // Err(crossbeam_channel::TryRecvError::Empty) => {
-                // }
                 Err(crossbeam_channel::TryRecvError::Disconnected) => {
                     println!("ipc_msg: disconnect");
                     break;

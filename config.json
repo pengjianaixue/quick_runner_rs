@@ -1,0 +1,26 @@
+[
+    {
+        "name":"GRAPE_GDB",
+        "type":"create",
+        "program_name":"python.exe",
+        "process_create_attr":"DETACHED_PROCESS",
+        "shortcut_key":"VK_NUMPAD0",
+        "work_dir":"D:/Code/firmware/memblaze/gdb/grape/gdb_launcher",
+        "args":
+        [
+            "D:/Code/firmware/memblaze/gdb/grape/gdb_launcher/gdb_launcher_gui_grape.py"
+        ]
+    },
+    {
+        "name":"scp_image_to_local",
+        "type":"create",
+        "program_name":"scp.exe",
+        "process_create_attr":"CREATE_NEW_CONSOLE",
+        "work_dir":"",
+        "shortcut_key":"VK_NUMPAD1",
+        "args":
+        [
+            "D:/Code/firmware/memblaze/gdb/grape/gdb_launcher/gdb_launcher_gui_grape.py"
+        ]
+    }
+]
