@@ -212,8 +212,8 @@ fn main() -> io::Result<()> {
     let get_message_thread =
         hotkey_register_and_monitor(unsafe { &CMD_CONFIG_MAP }, terminal_rx, hotkey_tx);
     /* waiting for the hook process thread */
-    while !get_message_thread.is_finished() {}
-    while !hotkey_handler.is_finished() {}
+    get_message_thread.join().unwrap();
+    hotkey_handler.join().unwrap();
     Ok(())
 }
 
