@@ -1,10 +1,10 @@
 [
     {
-        "name":"GRAPE_GDB",
-        "type":"create",
+        "quick_cmd_name":"GRAPE_GDB",
+        "run_type":"create",
         "program_name":"python.exe",
         "process_create_attr":"DETACHED_PROCESS",
-        "shortcut_key":"VK_NUMPAD0",
+        "shortcut_key_name":"VK_F1",
         "work_dir":"D:/Code/firmware/memblaze/gdb/grape/gdb_launcher",
         "args":
         [
@@ -12,15 +12,29 @@
         ]
     },
     {
-        "name":"scp_image_to_local",
-        "type":"create",
+        "quick_cmd_name":"scp_debug_bin_to_local",
+        "run_type":"create",
         "program_name":"scp.exe",
         "process_create_attr":"CREATE_NEW_CONSOLE",
-        "work_dir":"",
-        "shortcut_key":"VK_NUMPAD1",
+        "work_dir":null,
+        "shortcut_key_name":"VK_F2",
         "args":
         [
-            "D:/Code/firmware/memblaze/gdb/grape/gdb_launcher/gdb_launcher_gui_grape.py"
+            "pengjian@172.30.20.3:/home/pengjian/code/firmware/build/swap/images/*.axf",
+            "C:/Users/jian.peng/Desktop/Images/images"
+        ]
+    },
+    {
+        "quick_cmd_name":"scp_iamge_to_local",
+        "run_type":"create",
+        "program_name":"scp.exe",
+        "process_create_attr":"CREATE_NEW_CONSOLE",
+        "work_dir":null,
+        "shortcut_key_name":"VK_F3",
+        "args":
+        [
+            "pengjian@172.30.20.3:/home/pengjian/code/firmware/build/swap/images/image_allbinary.bin",
+            "C:/Users/jian.peng/Desktop/Images/images"
         ]
     }
 ]
