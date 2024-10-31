@@ -10,7 +10,8 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::ptr::null_mut;
 use std::str::FromStr;
-use std::thread::spawn;
+use std::thread::{sleep, spawn};
+use std::time::Duration;
 use std::u32::MAX;
 use std::{env, io};
 use winapi::um::winbase::{CREATE_NEW_CONSOLE, DETACHED_PROCESS};
@@ -51,7 +52,7 @@ struct Cmd_Context<'a> {
 
 fn get_process_attr_from_name(process_create_flag: &str) -> Option<u32> {
     match process_create_flag {
-        "CREATE_NEW_CONSOLE" => Some(DETACHED_PROCESS),
+        "CREATE_NEW_CONSOLE" => Some(CREATE_NEW_CONSOLE),
         "DETACHED_PROCESS" => Some(DETACHED_PROCESS),
         _ => None,
     }
@@ -64,6 +65,10 @@ fn run_command(run_ctxt: &Cmd_Context) -> io::Result<Child> {
     }
 
     if let Some(create_flag) = get_process_attr_from_name(run_ctxt.process_create_attr) {
+        if create_flag != CREATE_NEW_CONSOLE
+        {
+            cmd_runner.stdout(Stdio::piped());
+        }
         cmd_runner.creation_flags(create_flag);
     } else {
         println!(
@@ -74,7 +79,6 @@ fn run_command(run_ctxt: &Cmd_Context) -> io::Result<Child> {
 
     match cmd_runner
         .args(run_ctxt.args.clone())
-        .stdout(Stdio::piped())
         .spawn()
     {
         Ok(ret) => {
@@ -225,8 +229,9 @@ fn hotkey_handler(
         loop {
             let key_msg = hotkey_rx.try_recv();
             match key_msg {
-                // Err(crossbeam_channel::TryRecvError::Empty) => {
-                // }
+                Err(crossbeam_channel::TryRecvError::Empty) => {
+                    sleep(Duration::from_millis(1));
+                }
                 Err(crossbeam_channel::TryRecvError::Disconnected) => {
                     println!("ipc_msg: disconnect");
                     break;
@@ -241,7 +246,6 @@ fn hotkey_handler(
                         let _ = run_command(&cmd_ctxt);
                     }
                 }
-                _ => {}
             }
         }
     });
@@ -296,6 +300,8 @@ fn hotkey_register_and_monitor(
                     hotkey_tx.send(key_pressed as i32).unwrap();
                     println!("hot key:{:?} pressed !", key_pressed);
                 }
+            }else {
+                sleep(Duration::from_millis(1));
             }
         }
         let _ = UnregisterHotKey(null_mut(), HOTKEY_ID);
