@@ -148,17 +148,19 @@ fn get_virtual_key_code(key_name: &str) -> Option<u32> {
 
 /* hotkey magic number */
 const HOTKEY_ID: i32 = 0xC025DE_i32;
-static mut CONTENTS: std::string::String = String::new();
+
+// static mut CONTENTS: std::string::String = String::new();
 
 // macro_rules! print_var {
 //     ($var:ident) => {
 //         println!("{} = {:?}", stringify!($var), $var);
 //     };
 // }
-static mut CMD_CONFIG_MAP: Lazy<HashMap<u32, Cmd_Context<'static>>> = Lazy::new(|| {
-    let m = HashMap::new();
-    m
-});
+
+// static mut CMD_CONFIG_MAP: Lazy<HashMap<u32, Cmd_Context<'static>>> = Lazy::new(|| {
+//     let m = HashMap::new();
+//     m
+// });
 
 fn main() -> io::Result<()> {
     let args = Args::parse();
@@ -169,23 +171,26 @@ fn main() -> io::Result<()> {
     if !json_path.exists() {
         println!("File {} not exists", args.json_path)
     }
-    // let mut cmd_config_map: HashMap<u32, Cmd_Context> = HashMap::new();
+    let cmd_config_map: Box<HashMap<u32, Cmd_Context<'_>>>  = Box::new(HashMap::new());
+    let cmd_config_map_ref: &'static mut HashMap<u32, Cmd_Context<'_>> = Box::leak(cmd_config_map);
+    let contents = Box::new(String::new());
+    let contents_ref = Box::leak(contents);
     let mut file = std::fs::File::open(json_path).unwrap();
 
-    file.read_to_string(unsafe { &mut CONTENTS })?;
+    file.read_to_string(contents_ref)?;
 
-    let cmd_config_items: Vec<Cmd_Context> = from_str(unsafe { CONTENTS.as_str() })?;
+    let cmd_config_items: Vec<Cmd_Context> = from_str(contents_ref.as_str())?;
     for mut cmd_item in cmd_config_items {
         println!("config_cmd : {:?}", cmd_item);
         cmd_item.shortcut_key_code = get_virtual_key_code(cmd_item.shortcut_key_name);
         if let Some(shortcut_key) = cmd_item.shortcut_key_code {
-            if unsafe { CMD_CONFIG_MAP.contains_key(&shortcut_key) } {
+            if cmd_config_map_ref.contains_key(&shortcut_key) {
                 println!(
                     "the cmd: [{}] shortcut key [{}] conflict",
                     cmd_item.quick_cmd_name, cmd_item.shortcut_key_name
                 );
             } else {
-                unsafe { CMD_CONFIG_MAP.insert(shortcut_key, cmd_item) };
+                cmd_config_map_ref.insert(shortcut_key, cmd_item);
             }
         } else {
             println!(
@@ -212,9 +217,9 @@ fn main() -> io::Result<()> {
     //     }
     // }
 
-    let hotkey_handler = hotkey_handler(unsafe { &CMD_CONFIG_MAP }, hotkey_rx);
+    let hotkey_handler = hotkey_handler(cmd_config_map_ref, hotkey_rx);
     let get_message_thread =
-        hotkey_register_and_monitor(unsafe { &CMD_CONFIG_MAP }, terminal_rx, hotkey_tx);
+        hotkey_register_and_monitor(cmd_config_map_ref, terminal_rx, hotkey_tx);
     /* waiting for the hook process thread */
     get_message_thread.join().unwrap();
     hotkey_handler.join().unwrap();
