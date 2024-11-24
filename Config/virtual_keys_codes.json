@@ -1,0 +1,362 @@
+[
+    {
+        "key": "VK_SNAPSHOT",
+        "code": "0x2C",
+        "comment": "PRINT SCREEN 键"
+    },
+    {
+        "key": "VK_INSERT",
+        "code": "0x2D",
+        "comment": "INS 键"
+    },
+    {
+        "key": "VK_DELETE",
+        "code": "0x2E",
+        "comment": "DEL 键"
+    },
+    {
+        "key": "VK_HELP",
+        "code": "0x2F",
+        "comment": "HELP 键"
+    },
+    {
+        "key": "0x30",
+        "code": "0x30",
+        "comment": "0 键"
+    },
+    {
+        "key": "0x31",
+        "code": "0x31",
+        "comment": "1 键"
+    },
+    {
+        "key": "0x32",
+        "code": "0x32",
+        "comment": "2 键"
+    },
+    {
+        "key": "0x33",
+        "code": "0x33",
+        "comment": "3 键"
+    },
+    {
+        "key": "0x34",
+        "code": "0x34",
+        "comment": "4 键"
+    },
+    {
+        "key": "0x35",
+        "code": "0x35",
+        "comment": "5 键"
+    },
+    {
+        "key": "0x36",
+        "code": "0x36",
+        "comment": "6 键"
+    },
+    {
+        "key": "0x37",
+        "code": "0x37",
+        "comment": "7 键"
+    },
+    {
+        "key": "0x38",
+        "code": "0x38",
+        "comment": "8 键"
+    },
+    {
+        "key": "0x39",
+        "code": "0x39",
+        "comment": "9 键"
+    },
+    {
+        "key": "0x41",
+        "code": "0x41",
+        "comment": "A 键"
+    },
+    {
+        "key": "0x42",
+        "code": "0x42",
+        "comment": "B 键"
+    },
+    {
+        "key": "0x43",
+        "code": "0x43",
+        "comment": "C 键"
+    },
+    {
+        "key": "0x44",
+        "code": "0x44",
+        "comment": "D 键"
+    },
+    {
+        "key": "0x45",
+        "code": "0x45",
+        "comment": "E 键"
+    },
+    {
+        "key": "0x46",
+        "code": "0x46",
+        "comment": "F 键"
+    },
+    {
+        "key": "0x47",
+        "code": "0x47",
+        "comment": "G 键"
+    },
+    {
+        "key": "0x48",
+        "code": "0x48",
+        "comment": "H 键"
+    },
+    {
+        "key": "0x49",
+        "code": "0x49",
+        "comment": "I 键"
+    },
+    {
+        "key": "0x4A",
+        "code": "0x4A",
+        "comment": "J 键"
+    },
+    {
+        "key": "0x4B",
+        "code": "0x4B",
+        "comment": "K 键"
+    },
+    {
+        "key": "0x4C",
+        "code": "0x4C",
+        "comment": "L 键"
+    },
+    {
+        "key": "0x4D",
+        "code": "0x4D",
+        "comment": "M 键"
+    },
+    {
+        "key": "0x4E",
+        "code": "0x4E",
+        "comment": "N 键"
+    },
+    {
+        "key": "0x4F",
+        "code": "0x4F",
+        "comment": "O 键"
+    },
+    {
+        "key": "0x50",
+        "code": "0x50",
+        "comment": "P 键"
+    },
+    {
+        "key": "0x51",
+        "code": "0x51",
+        "comment": "Q 键"
+    },
+    {
+        "key": "0x52",
+        "code": "0x52",
+        "comment": "R 键"
+    },
+    {
+        "key": "0x53",
+        "code": "0x53",
+        "comment": "S 键"
+    },
+    {
+        "key": "0x54",
+        "code": "0x54",
+        "comment": "T 键"
+    },
+    {
+        "key": "0x55",
+        "code": "0x55",
+        "comment": "U 键"
+    },
+    {
+        "key": "0x56",
+        "code": "0x56",
+        "comment": "V 键"
+    },
+    {
+        "key": "0x57",
+        "code": "0x57",
+        "comment": "W 键"
+    },
+    {
+        "key": "0x58",
+        "code": "0x58",
+        "comment": "X 键"
+    },
+    {
+        "key": "0x59",
+        "code": "0x59",
+        "comment": "Y 键"
+    },
+    {
+        "key": "0x5A",
+        "code": "0x5A",
+        "comment": "Z 键"
+    },
+    {
+        "key": "VK_LWIN",
+        "code": "0x5B",
+        "comment": "左 Windows 键"
+    },
+    {
+        "key": "VK_RWIN",
+        "code": "0x5C",
+        "comment": "右侧 Windows 键"
+    },
+    {
+        "key": "VK_APPS",
+        "code": "0x5D",
+        "comment": "应用程序密钥"
+    },
+    {
+        "key": "VK_SLEEP",
+        "code": "0x5F",
+        "comment": "计算机休眠键"
+    },
+    {
+        "key": "VK_NUMPAD0",
+        "code": "0x60",
+        "comment": "数字键盘 0 键"
+    },
+    {
+        "key": "VK_NUMPAD1",
+        "code": "0x61",
+        "comment": "数字键盘 1 键"
+    },
+    {
+        "key": "VK_NUMPAD2",
+        "code": "0x62",
+        "comment": "数字键盘 2 键"
+    },
+    {
+        "key": "VK_NUMPAD3",
+        "code": "0x63",
+        "comment": "数字键盘 3 键"
+    },
+    {
+        "key": "VK_NUMPAD4",
+        "code": "0x64",
+        "comment": "数字键盘 4 键"
+    },
+    {
+        "key": "VK_NUMPAD5",
+        "code": "0x65",
+        "comment": "数字键盘 5 键"
+    },
+    {
+        "key": "VK_NUMPAD6",
+        "code": "0x66",
+        "comment": "数字键盘 6 键"
+    },
+    {
+        "key": "VK_NUMPAD7",
+        "code": "0x67",
+        "comment": "数字键盘 7 键"
+    },
+    {
+        "key": "VK_NUMPAD8",
+        "code": "0x68",
+        "comment": "数字键盘 8 键"
+    },
+    {
+        "key": "VK_NUMPAD9",
+        "code": "0x69",
+        "comment": "数字键盘 9 键"
+    },
+    {
+        "key": "VK_MULTIPLY",
+        "code": "0x6A",
+        "comment": "乘号键"
+    },
+    {
+        "key": "VK_ADD",
+        "code": "0x6B",
+        "comment": "加号键"
+    },
+    {
+        "key": "VK_SEPARATOR",
+        "code": "0x6C",
+        "comment": "分隔符键"
+    },
+    {
+        "key": "VK_SUBTRACT",
+        "code": "0x6D",
+        "comment": "减号键"
+    },
+    {
+        "key": "VK_DECIMAL",
+        "code": "0x6E",
+        "comment": "句点键"
+    },
+    {
+        "key": "VK_DIVIDE",
+        "code": "0x6F",
+        "comment": "除号键"
+    },
+    {
+        "key": "VK_F1",
+        "code": "0x70",
+        "comment": "F1 键"
+    },
+    {
+        "key": "VK_F2",
+        "code": "0x71",
+        "comment": "F2 键"
+    },
+    {
+        "key": "VK_F3",
+        "code": "0x72",
+        "comment": "F3 键"
+    },
+    {
+        "key": "VK_F4",
+        "code": "0x73",
+        "comment": "F4 键"
+    },
+    {
+        "key": "VK_F5",
+        "code": "0x74",
+        "comment": "F5 键"
+    },
+    {
+        "key": "VK_F6",
+        "code": "0x75",
+        "comment": "F6 键"
+    },
+    {
+        "key": "VK_F7",
+        "code": "0x76",
+        "comment": "F7 键"
+    },
+    {
+        "key": "VK_F8",
+        "code": "0x77",
+        "comment": "F8 键"
+    },
+    {
+        "key": "VK_F9",
+        "code": "0x78",
+        "comment": "F9 键"
+    },
+    {
+        "key": "VK_F10",
+        "code": "0x79",
+        "comment": "F10 键"
+    },
+    {
+        "key": "VK_F11",
+        "code": "0x7A",
+        "comment": "F11 键"
+    },
+    {
+        "key": "VK_F12",
+        "code": "0x7B",
+        "comment": "F12 键"
+    }
+]

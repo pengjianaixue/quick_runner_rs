@@ -30,11 +30,20 @@ use windows::Win32::UI::WindowsAndMessaging::{
 struct Args {
     /// Name of the person to greet
     #[arg(short, long, default_value_t = String::from(env::current_dir().unwrap().to_str().unwrap()) + "\\config.json")]
-    json_path: String,
+    cmd_config_json_path: String,
 
+    #[arg(short, long, default_value_t = String::from(env::current_dir().unwrap().to_str().unwrap()) + "\\virtual_keys_codes.json")]
+    key_code_json_path: String,
     /// Number of times to greet
-    #[arg(short, long, default_value_t = 1)]
-    count: u8,
+    #[arg(short, long, default_value_t = 2)]
+    arg_count: u8,
+}
+
+#[derive(Deserialize, Debug)]
+struct Key_Code<'a> {
+    key: &'a str,
+    code: &'a str,
+    comment: &'a str,
 }
 
 #[derive(Deserialize, Debug)]
@@ -95,36 +104,20 @@ fn run_command(run_ctxt: &Cmd_Context) -> io::Result<Child> {
     }
 }
 
-fn create_virtual_key_map() -> HashMap<&'static str, u32> {
-    let mut key_map = HashMap::new();
+fn create_virtual_key_map(key_map: &mut HashMap<&str, u32>, key_json_file_path: &str) -> Option<u32> {
+    let key_contents = Box::new(String::new());
+    let key_contents_ref = Box::leak(key_contents);
+    let mut key_config_file = std::fs::File::open(key_json_file_path).unwrap();
 
-    // key_map.insert("VK_LBUTTON", 0x01);
-    // key_map.insert("VK_RBUTTON", 0x02);
-    // key_map.insert("VK_CANCEL", 0x03);
-    // key_map.insert("VK_MBUTTON", 0x04);
-    // key_map.insert("VK_XBUTTON1", 0x05);
-    // key_map.insert("VK_XBUTTON2", 0x06);
-    // key_map.insert("VK_BACK", 0x08);
-    // key_map.insert("VK_TAB", 0x09);
-    // key_map.insert("VK_RETURN", 0x0D);
-    // key_map.insert("VK_SHIFT", 0x10);
-    // key_map.insert("VK_CONTROL", 0x11);
-    // key_map.insert("VK_MENU", 0x12);
-    // key_map.insert("VK_PAUSE", 0x13);
-    // key_map.insert("VK_CAPITAL", 0x14);
-    // key_map.insert("VK_ESCAPE", 0x1B);
-    // key_map.insert("VK_SPACE", 0x20);
-    key_map.insert("VK_NUMPAD0", 0x60);
-    key_map.insert("VK_NUMPAD1", 0x61);
-    key_map.insert("VK_NUMPAD2", 0x62);
-    key_map.insert("VK_F1", 0x70);
-    key_map.insert("VK_F2", 0x71);
-    key_map.insert("VK_F3", 0x72);
-    key_map
+    key_config_file.read_to_string(key_contents_ref).unwrap();
+    let key_config_items: Vec< crate::Key_Code > = from_str(key_contents_ref.as_str()).unwrap();
+    for mut cmd_item in key_config_items {
+        key_map.insert(cmd_item.key, u32::from_str_radix(cmd_item.code.trim_start_matches("0x"),16).unwrap());
+    }
+    Some(0)
 }
 
-fn get_virtual_key_code(key_name: &str) -> Option<u32> {
-    let key_map = create_virtual_key_map();
+fn get_virtual_key_code(key_map: &mut HashMap<&str, u32>, key_name: &str) -> Option<u32> {
     key_map.get(key_name).copied()
 }
 
@@ -164,25 +157,27 @@ const HOTKEY_ID: i32 = 0xC025DE_i32;
 
 fn main() -> io::Result<()> {
     let args = Args::parse();
-    for _ in 0..args.count {
-        println!("Args: {}", args.json_path);
+    for _ in 0..args.arg_count {
+        println!("Args: {}", args.cmd_config_json_path);
     }
-    let json_path = Path::new(args.json_path.as_str());
+    let json_path = Path::new(args.cmd_config_json_path.as_str());
     if !json_path.exists() {
-        println!("File {} not exists", args.json_path)
+        println!("File {} not exists", args.cmd_config_json_path)
     }
     let cmd_config_map: Box<HashMap<u32, Cmd_Context<'_>>>  = Box::new(HashMap::new());
     let cmd_config_map_ref: &'static mut HashMap<u32, Cmd_Context<'_>> = Box::leak(cmd_config_map);
     let contents = Box::new(String::new());
     let contents_ref = Box::leak(contents);
-    let mut file = std::fs::File::open(json_path).unwrap();
-
-    file.read_to_string(contents_ref)?;
-
+    let mut cmd_config_file = std::fs::File::open(json_path).unwrap();
+    cmd_config_file.read_to_string(contents_ref)?;
     let cmd_config_items: Vec<Cmd_Context> = from_str(contents_ref.as_str())?;
+
+    let mut virtual_key_map: Box<HashMap<&str, u32>> = Box::new(HashMap::new());
+    let virtual_key_map_ref = Box::leak(virtual_key_map);
+    create_virtual_key_map(virtual_key_map_ref, &args.key_code_json_path).unwrap();
     for mut cmd_item in cmd_config_items {
         println!("config_cmd : {:?}", cmd_item);
-        cmd_item.shortcut_key_code = get_virtual_key_code(cmd_item.shortcut_key_name);
+        cmd_item.shortcut_key_code = get_virtual_key_code(virtual_key_map_ref,cmd_item.shortcut_key_name);
         if let Some(shortcut_key) = cmd_item.shortcut_key_code {
             if cmd_config_map_ref.contains_key(&shortcut_key) {
                 println!(
