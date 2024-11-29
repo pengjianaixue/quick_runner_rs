@@ -14,6 +14,7 @@ use std::thread::{sleep, spawn};
 use std::time::Duration;
 use std::u32::MAX;
 use std::{env, io};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use winapi::um::winbase::{CREATE_NEW_CONSOLE, DETACHED_PROCESS};
 use winapi::{
     shared::minwindef::UINT,
@@ -47,16 +48,16 @@ struct Key_Code<'a> {
 }
 
 #[derive(Deserialize, Debug)]
-struct Cmd_Context<'a> {
-    quick_cmd_name: &'a str,
-    run_type: Option<&'a str>,
-    program_name: &'a str,
-    process_create_attr: &'a str,
-    work_dir: Option<&'a str>,
-    shortcut_key_name: &'a str,
+struct Cmd_Context<> {
+    quick_cmd_name: &'static str,
+    run_type: Option<&'static str>,
+    program_name: &'static str,
+    process_create_attr: &'static str,
+    work_dir: Option<&'static str>,
+    shortcut_key_name: &'static str,
     #[serde(skip)]
     shortcut_key_code: Option<u32>,
-    args: Vec<&'a str>,
+    args: Vec<&'static str>,
 }
 
 fn get_process_attr_from_name(process_create_flag: &str) -> Option<u32> {
@@ -74,8 +75,7 @@ fn run_command(run_ctxt: &Cmd_Context) -> io::Result<Child> {
     }
 
     if let Some(create_flag) = get_process_attr_from_name(run_ctxt.process_create_attr) {
-        if create_flag != CREATE_NEW_CONSOLE
-        {
+        if create_flag != CREATE_NEW_CONSOLE {
             cmd_runner.stdout(Stdio::piped());
         }
         cmd_runner.creation_flags(create_flag);
@@ -86,10 +86,7 @@ fn run_command(run_ctxt: &Cmd_Context) -> io::Result<Child> {
         );
     }
 
-    match cmd_runner
-        .args(run_ctxt.args.clone())
-        .spawn()
-    {
+    match cmd_runner.args(run_ctxt.args.clone()).spawn() {
         Ok(ret) => {
             println!("[runner]-> run cmd:<{}> success", run_ctxt.quick_cmd_name);
             Ok(ret)
@@ -104,20 +101,59 @@ fn run_command(run_ctxt: &Cmd_Context) -> io::Result<Child> {
     }
 }
 
-fn create_virtual_key_map(key_map: &mut HashMap<&str, u32>, key_json_file_path: &str) -> Option<u32> {
+fn create_virtual_key_map(
+    key_map: &mut HashMap<&str, u32>,
+    key_json_file_path: &str,
+) -> Option<u32> {
     let key_contents = Box::new(String::new());
     let key_contents_ref = Box::leak(key_contents);
     let mut key_config_file = std::fs::File::open(key_json_file_path).unwrap();
 
     key_config_file.read_to_string(key_contents_ref).unwrap();
-    let key_config_items: Vec< crate::Key_Code > = from_str(key_contents_ref.as_str()).unwrap();
+    let key_config_items: Vec<crate::Key_Code> = from_str(key_contents_ref.as_str()).unwrap();
     for mut cmd_item in key_config_items {
-        key_map.insert(cmd_item.key, u32::from_str_radix(cmd_item.code.trim_start_matches("0x"),16).unwrap());
+        key_map.insert(
+            cmd_item.key,
+            u32::from_str_radix(cmd_item.code.trim_start_matches("0x"), 16).unwrap(),
+        );
     }
     Some(0)
 }
 
-fn get_virtual_key_code(key_map: &mut HashMap<&str, u32>, key_name: &str) -> Option<u32> {
+fn create_cmd_config(
+    cmd_json_path: & 'static str,
+    virtual_key_map_ref: & 'static HashMap<&str, u32>,
+    mut cmd_config_map_ref: &RwLockWriteGuard<HashMap<u32, Cmd_Context>>,
+) -> io::Result<()> {
+    let contents = Box::new(String::new());
+    let contents_ref = Box::leak(contents);
+    let mut cmd_config_file = std::fs::File::open(cmd_json_path).unwrap();
+    cmd_config_file.read_to_string(contents_ref)?;
+    let cmd_config_items: Vec<Cmd_Context> = from_str(contents_ref.as_str())?;
+    for mut cmd_item in cmd_config_items {
+        println!("config_cmd : {:?}", cmd_item);
+        cmd_item.shortcut_key_code =
+            get_virtual_key_code(virtual_key_map_ref, cmd_item.shortcut_key_name);
+        if let Some(shortcut_key) = cmd_item.shortcut_key_code {
+            if cmd_config_map_ref.contains_key(&shortcut_key) {
+                println!(
+                    "the cmd: [{}] shortcut key [{}] conflict",
+                    cmd_item.quick_cmd_name, cmd_item.shortcut_key_name
+                );
+            } else {
+                cmd_config_map_ref.insert(shortcut_key, cmd_item);
+            }
+        } else {
+            println!(
+                "[Err] => cmd:[{}] shortcut key[{}] do not support",
+                cmd_item.quick_cmd_name, cmd_item.shortcut_key_name
+            );
+        }
+    }
+    io::Result::Ok(())
+}
+
+fn get_virtual_key_code(key_map: &HashMap<&str, u32>, key_name: &str) -> Option<u32> {
     key_map.get(key_name).copied()
 }
 
@@ -164,36 +200,17 @@ fn main() -> io::Result<()> {
     if !json_path.exists() {
         println!("File {} not exists", args.cmd_config_json_path)
     }
-    let cmd_config_map: Box<HashMap<u32, Cmd_Context<'_>>>  = Box::new(HashMap::new());
-    let cmd_config_map_ref: &'static mut HashMap<u32, Cmd_Context<'_>> = Box::leak(cmd_config_map);
-    let contents = Box::new(String::new());
-    let contents_ref = Box::leak(contents);
-    let mut cmd_config_file = std::fs::File::open(json_path).unwrap();
-    cmd_config_file.read_to_string(contents_ref)?;
-    let cmd_config_items: Vec<Cmd_Context> = from_str(contents_ref.as_str())?;
-
+    let cmd_config_json_path = Box::leak(Box::new(args.cmd_config_json_path).into_boxed_str());
     let mut virtual_key_map: Box<HashMap<&str, u32>> = Box::new(HashMap::new());
-    let virtual_key_map_ref = Box::leak(virtual_key_map);
+    let virtual_key_map_ref: &'static mut HashMap<&str, u32> = Box::leak(virtual_key_map);
     create_virtual_key_map(virtual_key_map_ref, &args.key_code_json_path).unwrap();
-    for mut cmd_item in cmd_config_items {
-        println!("config_cmd : {:?}", cmd_item);
-        cmd_item.shortcut_key_code = get_virtual_key_code(virtual_key_map_ref,cmd_item.shortcut_key_name);
-        if let Some(shortcut_key) = cmd_item.shortcut_key_code {
-            if cmd_config_map_ref.contains_key(&shortcut_key) {
-                println!(
-                    "the cmd: [{}] shortcut key [{}] conflict",
-                    cmd_item.quick_cmd_name, cmd_item.shortcut_key_name
-                );
-            } else {
-                cmd_config_map_ref.insert(shortcut_key, cmd_item);
-            }
-        } else {
-            println!(
-                "[Err] => cmd:[{}] shortcut key[{}] do not support",
-                cmd_item.quick_cmd_name, cmd_item.shortcut_key_name
-            );
-        }
-    }
+    let cmd_config_map= Box::new(RwLock::new(HashMap::new()));
+    let cmd_config_map_mut_ref: &'static mut RwLock<HashMap<u32, Cmd_Context>> = Box::leak(cmd_config_map);
+    create_cmd_config(
+        cmd_config_json_path,
+        virtual_key_map_ref,
+        &cmd_config_map_mut_ref.write().unwrap(),
+    ).expect("parse command config failed");
     let (terminal_tx, terminal_rx) = unbounded();
     let (hotkey_tx, hotkey_rx) = unbounded();
     /* add the ctrl-c input handler */
@@ -212,9 +229,14 @@ fn main() -> io::Result<()> {
     //     }
     // }
 
-    let hotkey_handler = hotkey_handler(cmd_config_map_ref, hotkey_rx);
+    let hotkey_handler = hotkey_handler(
+        cmd_config_json_path,
+        virtual_key_map_ref,
+        &cmd_config_map_mut_ref.write().unwrap(),
+        hotkey_rx
+    );
     let get_message_thread =
-        hotkey_register_and_monitor(cmd_config_map_ref, terminal_rx, hotkey_tx);
+        hotkey_register_and_monitor(cmd_config_map_mut_ref.read().unwrap(), terminal_rx, hotkey_tx);
     /* waiting for the hook process thread */
     get_message_thread.join().unwrap();
     hotkey_handler.join().unwrap();
@@ -222,29 +244,34 @@ fn main() -> io::Result<()> {
 }
 
 fn hotkey_handler(
-    cmd_config_map: &'static HashMap<u32, Cmd_Context>,
+    cmd_file_path: &'static str,
+    vf_keymap: &HashMap<&str, u32>,
+    cmd_config_map: &RwLockWriteGuard<HashMap<u32, Cmd_Context>>,
     hotkey_rx: crossbeam_channel::Receiver<i32>,
 ) -> std::thread::JoinHandle<()> {
-    let hotkey_handler = spawn(move || {
-        loop {
-            let key_msg = hotkey_rx.try_recv();
-            match key_msg {
-                Err(crossbeam_channel::TryRecvError::Empty) => {
-                    sleep(Duration::from_millis(1));
-                }
-                Err(crossbeam_channel::TryRecvError::Disconnected) => {
-                    println!("ipc_msg: disconnect");
+    let hotkey_handler = spawn(move || loop {
+        let key_msg = hotkey_rx.try_recv();
+        match key_msg {
+            Err(crossbeam_channel::TryRecvError::Empty) => {
+                sleep(Duration::from_millis(1));
+            }
+            Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                println!("ipc_msg: disconnect");
+                break;
+            }
+            Ok(key_code) => {
+                println!("key recv: {}", key_code);
+                if key_code == MAX as i32 {
+                    println!("hot key process exit !");
+                    break;
+                } else if key_code == (*(vf_keymap.get("VK_F9").unwrap()) as i32) {
+                    println!("re-load cmd config !");
+                    create_cmd_config(cmd_file_path, &vf_keymap, cmd_config_map)
+                        .expect("reload cmd config fail");
                     break;
                 }
-                Ok(key_code) => {
-                    println!("key recv: {}", key_code);
-                    if key_code == MAX as i32 {
-                        println!("hot key process exit !");
-                        break;
-                    }
-                    if let Some(cmd_ctxt) = cmd_config_map.get(&(key_code as u32)) {
-                        let _ = run_command(&cmd_ctxt);
-                    }
+                if let Some(cmd_ctxt) = cmd_config_map.get(&(key_code as u32)) {
+                    let _ = run_command(&cmd_ctxt);
                 }
             }
         }
@@ -253,12 +280,13 @@ fn hotkey_handler(
 }
 
 fn hotkey_register_and_monitor(
-    cmd_config_map: &'static HashMap<u32, Cmd_Context>,
+    cmd_config_map: RwLockReadGuard<HashMap<u32, Cmd_Context>>,
     terminal_rx: crossbeam_channel::Receiver<String>,
     hotkey_tx: crossbeam_channel::Sender<i32>,
-) -> std::thread::JoinHandle<()> {
+) -> std::thread::JoinHandle<()>
+{
     let get_message_thread = spawn(move || unsafe {
-        for (hotkey, cmd_context) in cmd_config_map {
+        for (hotkey, cmd_context) in cmd_config_map.iter() {
             if RegisterHotKey(
                 null_mut(),
                 HOTKEY_ID,
@@ -300,7 +328,7 @@ fn hotkey_register_and_monitor(
                     hotkey_tx.send(key_pressed as i32).unwrap();
                     println!("hot key:{:?} pressed !", key_pressed);
                 }
-            }else {
+            } else {
                 sleep(Duration::from_millis(1));
             }
         }
