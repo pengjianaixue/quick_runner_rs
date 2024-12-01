@@ -1,5 +1,5 @@
 use clap::Parser;
-use crossbeam_channel::unbounded;
+use crossbeam_channel::{unbounded, Receiver, Sender};
 use once_cell::sync::Lazy;
 use serde::Deserialize;
 use serde_json::from_str;
@@ -10,21 +10,26 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::ptr::null_mut;
 use std::str::FromStr;
+use std::sync::{Arc, RwLock};
 use std::thread::{sleep, spawn};
 use std::time::Duration;
 use std::u32::MAX;
 use std::{env, io};
-use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use winapi::um::winbase::{CREATE_NEW_CONSOLE, DETACHED_PROCESS};
 use winapi::{
     shared::minwindef::UINT,
     um::{errhandlingapi::*, winuser::*},
 };
-use windows::Win32::Foundation::{HINSTANCE, LPARAM, LRESULT, TRUE as Foundation_True, WPARAM};
+// use winapi::shared::windef::HWND;
+use windows::Win32::Foundation::HWND;
+use windows::Win32::Foundation::{
+    HINSTANCE, LPARAM, LRESULT, TRUE as Foundation_True, TRUE, WPARAM,
+};
 use windows::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, PeekMessageA, SetWindowsHookExA, UnhookWindowsHookEx, HC_ACTION,
     KBDLLHOOKSTRUCT, MSG, PM_NOREMOVE, PM_REMOVE, WH_KEYBOARD_LL,
 };
+
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
@@ -121,27 +126,38 @@ fn create_virtual_key_map(
 }
 
 fn create_cmd_config(
-    cmd_json_path: & 'static str,
-    virtual_key_map_ref: & 'static HashMap<&str, u32>,
-    cmd_config_map_ref: Arc<RwLock<HashMap<u32, CmdContext>>>,
+    cmd_json_path: &'static str,
+    virtual_key_map_ref: &'static HashMap<&str, u32>,
+    cmd_config_map_ref: &Arc<RwLock<HashMap<u32, CmdContext>>>,
+    is_reload:bool,
 ) -> io::Result<()> {
     let contents = Box::new(String::new());
     let contents_ref = Box::leak(contents);
     let mut cmd_config_file = std::fs::File::open(cmd_json_path).unwrap();
     cmd_config_file.read_to_string(contents_ref)?;
     let cmd_config_items: Vec<CmdContext> = from_str(contents_ref.as_str())?;
+    if is_reload {
+        cmd_config_map_ref.write().unwrap().clear();
+    }
     for mut cmd_item in cmd_config_items {
         println!("config_cmd : {:?}", cmd_item);
         cmd_item.shortcut_key_code =
             get_virtual_key_code(virtual_key_map_ref, cmd_item.shortcut_key_name);
         if let Some(shortcut_key) = cmd_item.shortcut_key_code {
-            if cmd_config_map_ref.read().unwrap().contains_key(&shortcut_key) {
+            if cmd_config_map_ref
+                .read()
+                .unwrap()
+                .contains_key(&shortcut_key)
+            {
                 println!(
                     "the cmd: [{}] shortcut key [{}] conflict",
                     cmd_item.quick_cmd_name, cmd_item.shortcut_key_name
                 );
             } else {
-                cmd_config_map_ref.write().unwrap().insert(shortcut_key, cmd_item);
+                cmd_config_map_ref
+                    .write()
+                    .unwrap()
+                    .insert(shortcut_key, cmd_item);
             }
         } else {
             println!(
@@ -204,16 +220,20 @@ fn main() -> io::Result<()> {
     let mut virtual_key_map: Box<HashMap<&str, u32>> = Box::new(HashMap::new());
     let virtual_key_map_ref: &'static mut HashMap<&str, u32> = Box::leak(virtual_key_map);
     create_virtual_key_map(virtual_key_map_ref, &args.key_code_json_path).unwrap();
-    let cmd_config_map=Box::new(Arc::new(RwLock::new(HashMap::new())));
+    let cmd_config_map = Box::new(Arc::new(RwLock::new(HashMap::new())));
     // let  cmd_config_map: &'static mut Arc<RwLock<HashMap<u32, CmdContext>>>=  Box::leak(Arc::new(RwLock::new(HashMap::new())));
-    let cmd_config_map_mut_ref: &'static mut Arc<RwLock<HashMap<u32, CmdContext>>> = Box::leak(cmd_config_map);
+    let cmd_config_map_mut_ref: &'static mut Arc<RwLock<HashMap<u32, CmdContext>>> =
+        Box::leak(cmd_config_map);
     create_cmd_config(
         cmd_config_json_path,
         virtual_key_map_ref,
-        cmd_config_map_mut_ref.clone(),
-    ).expect("parse command config failed");
+        &cmd_config_map_mut_ref.clone(),
+        false
+    )
+    .expect("parse command config failed");
     let (terminal_tx, terminal_rx) = unbounded();
     let (hotkey_tx, hotkey_rx) = unbounded();
+    let (config_change_tx, config_change_rx) = unbounded();
     /* add the ctrl-c input handler */
     ctrlc::set_handler(move || {
         println!("received ctrl + C");
@@ -234,21 +254,28 @@ fn main() -> io::Result<()> {
         cmd_config_json_path,
         virtual_key_map_ref,
         cmd_config_map_mut_ref,
-        hotkey_rx
+        hotkey_rx,
+        config_change_tx,
     );
-    let get_message_thread =
-        hotkey_register_and_monitor(cmd_config_map_mut_ref, terminal_rx, hotkey_tx);
+    let get_message_thread = hotkey_register_and_monitor(
+        cmd_config_map_mut_ref,
+        terminal_rx,
+        hotkey_tx,
+        config_change_rx,
+    );
     /* waiting for the hook process thread */
     get_message_thread.join().unwrap();
     hotkey_handler.join().unwrap();
+    println!("main process exit");
     Ok(())
 }
 
-fn hotkey_handler<>(
+fn hotkey_handler(
     cmd_file_path: &'static str,
     vf_keymap: &'static HashMap<&str, u32>,
-    mut cmd_config_map:  &'static Arc<RwLock<HashMap<u32, CmdContext>>>,
+    mut cmd_config_map: &'static Arc<RwLock<HashMap<u32, CmdContext>>>,
     hotkey_rx: crossbeam_channel::Receiver<i32>,
+    config_change_tx: Sender<u32>,
 ) -> std::thread::JoinHandle<()> {
     let hotkey_handler = spawn(move || loop {
         let cmd_config_map_local = cmd_config_map.clone();
@@ -268,11 +295,12 @@ fn hotkey_handler<>(
                     break;
                 } else if key_code == (*(vf_keymap.get("VK_F9").unwrap()) as i32) {
                     println!("re-load cmd config !");
-                    create_cmd_config(cmd_file_path, &vf_keymap, cmd_config_map_local)
+                    create_cmd_config(cmd_file_path, &vf_keymap, &cmd_config_map_local,true)
                         .expect("reload cmd config fail");
-                    break;
+                    config_change_tx.send(1).expect("send failed");
                 }
-                if let Some(cmd_ctxt) = cmd_config_map_local.read().unwrap().get(&(key_code as u32)) {
+                if let Some(cmd_ctxt) = cmd_config_map_local.read().unwrap().get(&(key_code as u32))
+                {
                     let _ = run_command(&cmd_ctxt);
                 }
             }
@@ -285,26 +313,12 @@ fn hotkey_register_and_monitor(
     cmd_config_map: &'static Arc<RwLock<HashMap<u32, CmdContext>>>,
     terminal_rx: crossbeam_channel::Receiver<String>,
     hotkey_tx: crossbeam_channel::Sender<i32>,
-) -> std::thread::JoinHandle<()>
-{
+    config_change_rx: Receiver<u32>,
+) -> std::thread::JoinHandle<()> {
     let get_message_thread = spawn(move || unsafe {
-        for (hotkey, cmd_context) in cmd_config_map.read().unwrap().iter() {
-            if RegisterHotKey(
-                null_mut(),
-                HOTKEY_ID,
-                (MOD_ALT | MOD_CONTROL | MOD_NOREPEAT) as UINT,
-                (*hotkey) as UINT,
-            ) == 0
-            {
-                eprintln!("register hot key error, exit {}", GetLastError());
-                return;
-            } else {
-                println!(
-                    "hotkey register: {} => {}",
-                    cmd_context.shortcut_key_name,
-                    cmd_context.shortcut_key_code.unwrap()
-                );
-            }
+        let mut hwnd: winapi::shared::windef::HWND = std::mem::zeroed();
+        if !register_cmd_hot_key(cmd_config_map) {
+            return;
         }
         let mut msg = MSG::default();
         loop {
@@ -323,10 +337,36 @@ fn hotkey_register_and_monitor(
                 }
                 _ => {}
             }
+            let config_change_notify = config_change_rx.try_recv();
+            match config_change_notify {
+                Err(crossbeam_channel::TryRecvError::Disconnected) => {
+                    println!("config_change: disconnect");
+                    break;
+                }
+                Ok(config_change_notify) => {
+                    println!("config re-load msg: {}", config_change_notify);
+                    if config_change_notify == 1 {
+                        println!("config reload process ack !");
+                        if !register_cmd_hot_key(cmd_config_map) {
+                            println!("register_cmd_hot_key exit !");
+                            return;
+                        }
+                    }
+                }
+                _ => {}
+            }
             if PeekMessageA(&mut msg, None, 0, 0, PM_REMOVE) == Foundation_True {
                 println!("rec msg");
                 if msg.message == WM_HOTKEY && msg.wParam == WPARAM(HOTKEY_ID as usize) {
                     let key_pressed = msg.lParam.0 >> 16;
+                    if key_pressed == 0x78 {
+                        println!("0x78 pressed");
+                        if UnregisterHotKey(null_mut(), HOTKEY_ID) != 1
+                        {
+                            println!("UnregisterHotKey failed");
+                            return;
+                        }
+                    }
                     hotkey_tx.send(key_pressed as i32).unwrap();
                     println!("hot key:{:?} pressed !", key_pressed);
                 }
@@ -337,4 +377,40 @@ fn hotkey_register_and_monitor(
         let _ = UnregisterHotKey(null_mut(), HOTKEY_ID);
     });
     get_message_thread
+}
+
+fn register_cmd_hot_key(cmd_config_map: &Arc<RwLock<HashMap<u32, CmdContext>>>) -> bool {
+    unsafe {
+        if RegisterHotKey(
+            null_mut(),
+            HOTKEY_ID,
+            (MOD_ALT | MOD_CONTROL | MOD_NOREPEAT) as UINT,
+            (0x78) as UINT,
+        ) == 0
+        {
+            eprintln!("register hot key error, exit {}", GetLastError());
+            return false;
+        } else {
+            println!("reload hot key register success");
+        }
+        for (hotkey, cmd_context) in cmd_config_map.read().unwrap().iter() {
+            if RegisterHotKey(
+                null_mut(),
+                HOTKEY_ID,
+                (MOD_ALT | MOD_CONTROL | MOD_NOREPEAT) as UINT,
+                (*hotkey) as UINT,
+            ) == 0
+            {
+                eprintln!("register hot key error, exit {}", GetLastError());
+                return false;
+            } else {
+                println!(
+                    "hotkey register: {} => {}",
+                    cmd_context.shortcut_key_name,
+                    cmd_context.shortcut_key_code.unwrap()
+                );
+            }
+        }
+        true
+    }
 }
